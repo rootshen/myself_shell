@@ -1,0 +1,112 @@
+#!/bin/bash
+搭建环境
+三台 centos6.8 系统 主机
+server1 192.168.74.140
+web     192.168.74.131
+web2    192.168.74.132
+
+准备mysql5.7的安装环境
+	wget https://dev.mysql.com/get/mysql57-community-release-el6-9.noarch.rpm ####下载yum源
+	yum localinstall -y mysql57-community-release-el6-9.noarch.rpm  ##
+安装使用软件cmake.x86_64 0:2.8.12.2-4.el6
+	yum -y isntall mysql-community-server  @####安装mysql57
+yum 安装以上包
+开放对应端口 3306 33061
+修改 /etc/hosts 文件 增加主机名与ip映射
+修改/etc/my.cnf
+##########################################################
+[mysqld]
+datadir=/var/lib/mysql
+socket=/var/lib/mysql/mysql.sock
+log-error=/var/log/mysqld.log
+pid-file=/var/run/mysqld/mysqld.pid
+
+port=3306
+
+server_id=3
+gtid_mode=ON
+enforce_gtid_consistency=ON
+binlog_checksum=NONE
+
+log_bin=binlog
+log_slave_updates=ON
+binlog_format=ROW
+master_info_repository=TABLE
+relay_log_info_repository=TABLE
+
+transaction_write_set_extraction=XXHASH64
+loose-group_replication_group_name="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+loose-group_replication_start_on_boot=OFF
+loose-group_replication_local_address= "192.168.74.131:33061"
+loose-group_replication_group_seeds= "192.168.74.140:33061,192.168.74.134:33061,192.168.74.131:33061"
+loose-group_replication_bootstrap_group=OFF
+
+report_host=192.168.74.131    
+report_port=3306
+#######################################################################
+server_id;loose-group_replication_local_address;report_host 修改成对应的值 不能重复
+启动musqld 修改密码等
+再次登录mysql
+
+组内每台主机,都需要先安装组复制插件.否则会导致启动失败.
+mysql>INSTALL PLUGIN group_replication SONAME 'group_replication.so';
+
+任选一台执行：
+mysql>SET GLOBAL group_rep
+lication_bootstrap_group=ON; 
+mysql>GRANT REPLICATION SLAVE ON *.* TO 'repl'@'%' IDENTIFIED BY '123qqq...AAA'; 
+mysql> CHANGE MASTER TO MASTER_USER='repl',MASTER_PASSWORD='123qqq...AAA' FOR CHANNEL 'group_replication_recovery';
+mysql> START GROUP_REPLICATION;####
+mysql> SELECT * FROM performance_schema.replication_group_members;
+#######################################################################
+其余两台执行一下操作：
+mysql> CHANGE MASTER TO MASTER_USER='repl',MASTER_PASSWORD='123qqq...AAA' FOR CHANNEL 'group_replication_recovery';
+mysql> set global group_replication_allow_local_disjoint_gtids_join=ON;
+mysql> START GROUP_REPLICATION;
+#############################################################
+master测试服务是否搭建成功
+
+
+
+
+
+切换到多主模式
+MGR切换模式需要重新启动组复制，因些需要在所有节点上先关闭组复制，设置 group_replication_single_primary_mode=OFF 等参数，再启动组复制。
+# 停止组复制(所有节点执行)：
+mysql> stop group_replication;
+mysql> set global group_replication_single_primary_mode=OFF;
+mysql> set global group_replication_enforce_update_everywhere_checks=ON;
+
+# 随便选择某个节点执行
+mysql> SET GLOBAL group_replication_bootstrap_group=ON; 
+mysql> START GROUP_REPLICATION; 
+mysql> SET GLOBAL group_replication_bootstrap_group=OFF;
+
+# 其他节点执行
+mysql> START GROUP_REPLICATION; 
+
+# 查看组信息，所有节点的 MEMBER_ROLE 都为 PRIMARY
+mysql> SELECT * FROM performance_schema.replication_group_members;
+ 如果看到所有节点状态都是online，角色都是PRIMARY，MGR多主模式搭建成功。
+####################################################################
+
+
+
+切回单主模式
+# 所有节点执行
+mysql> stop group_replication;
+mysql> set global group_replication_enforce_update_everywhere_checks=OFF;
+mysql> set global group_replication_single_primary_mode=ON;
+
+# 主节点（192.168.56.101）执行
+SET GLOBAL group_replication_bootstrap_group=ON; 
+START GROUP_REPLICATION; 
+SET GLOBAL group_replication_bootstrap_group=OFF;
+
+
+# 从节点（192.168.56.102、192.168.56.103）执行
+START GROUP_REPLICATION; 
+
+# 查看MGR组信息
+mysql> SELECT * FROM performance_schema.replication_group_members;
+#made tian 
