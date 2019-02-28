@@ -23,7 +23,7 @@ elif [ $back -eq 1 ];then
 elif [ $back -eq 2 ];then
 		wget https://dev.mysql.com/get/mysql57-community-release-el6-9.noarch.rpm
 		yum localinstall -y mysql57-community-release-el6-9.noarch.rpm
-		yum -y install mysqld
+		yum -y install mysql-community-server
 		service mysqld start
 		chkconfig --add mysqld
 elif [ $back -eq 3 ];then
